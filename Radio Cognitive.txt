@@ -1,0 +1,353 @@
+clear all; clc;
+n=10; %Number of data symbols
+Tsym=8; %Symbol time interms of sample time or oversampling rate equivalently
+SNRstep=5;
+SNR_dB=-20:SNRstep:20;
+rng('default');%set the random generator seed to default.
+BinData=round(rand(1,n));
+data=2*BinData-1; %BPSK data Unipolar 2 Bipolar
+bpsk=reshape(repmat(data,1,Tsym)',n*Tsym,1); %BPSK signal
+L=length(bpsk);
+PDc1=0;
+PDc2=0;
+PFc1=0;
+PFc2=0;
+PFc=0;
+PFs=0.1;
+for i=1:length(SNR_dB)
+ 
+    SNR = 10^(SNR_dB(i)/10); %SNR to linear scale
+    Esym=sum(abs(bpsk).^2)/(L); %Calculate actual symbol energy
+    N0=Esym/SNR; %Find the noise spectral density
+    noiseSigma = sqrt(N0);%Standard deviation for AWGN Noise when x is real
+    noise(:,i) = noiseSigma*randn(1,L);%computed noise
+    
+    receivedx(:,i)=bpsk+noise(:,i) ;
+    receivedfliped=flipud(receivedx(:,i));
+    
+    impRes = [0.5 ones(1,6) 0.5]; %Averaging Filter -&gt; u[n]-u[n-Tsamp]
+    yy1(:,i)=conv(receivedx(:,i),impRes,'full');
+    
+    xp(:,i)=receivedfliped;
+    thresh(:,i)=noise(:,i).*xp(:,i);
+    yy2(:,i)=filter(xp(:,i),1,receivedx(:,i));
+    
+    for j = 1:L
+        if(yy1(j,i)>thresh(j,i))
+            PDc1=PDc1+1;
+        end
+        if(yy2(j,i)>thresh(j,i))
+            PDc2=PDc2+1;
+        end
+        if(noise(j,i)>thresh(j,i))
+            PFc=PFc+1;
+        end
+        if(yy1(j,i)<thresh(j,i))
+            PFc1=PFc1+1;
+        end
+        if(yy2(j,i)<thresh(j,i))
+            PFc2=PFc2+1;
+        end
+    end
+ 
+     PD1(:,i)=PDc1/(L*n);
+     PD2(:,i)=PDc2/(L*n);
+     PF1(:,i)=PFc1/(L*n);
+     PF2(:,i)=PFc2/(L*n);
+     PFinv(:,i)=(PFc/(L*n));
+     PF(:,i)=1-PFinv(:,i);
+ 
+     TheoryThreshold(i)=qfuncinv(PFinv(:,i)).*sqrt(SNR*noiseSigma^2);
+     PFstatic(i)=PFs;
+     StaticThreshold(i)=qfuncinv(PFs).*sqrt(SNR*noiseSigma^2);
+     
+     PDtheory(i)=qfunc((TheoryThreshold(i)-SNR)/sqrt(SNR*noiseSigma^2));
+     PMdy(i)=1-PDtheory(i);
+     PDstatictheory(i)=qfunc((StaticThreshold(i)-SNR)/sqrt(SNR*noiseSigma^2));
+     PMstatic(i)=1-PDstatictheory(i);
+     PFAtheory(i)=qfunc((1-TheoryThreshold(i))/sqrt(SNR*noiseSigma^2));
+ 
+     figure('Color',[1 1 1]);
+     subplot(4,1,1);
+     plot(bpsk);
+     titleX=sprintf('Simulation with %d dB',SNR_dB(i));
+     title(titleX);
+     xlabel('Sample index [n]');
+     ylabel('Amplitude');
+    set(gca,'XTick',0:8:L);
+    
+    axis([1 L -2 2]); grid on;
+    subplot(4,1,2);
+    plot(receivedx(:,i));
+    title('Transmitted BPSK symbols (with noise)');
+    xlabel('Sample index [n]');
+    ylabel('Amplitude')
+    ymax=max(receivedx(:,i))+1;
+    ymin=min(receivedx(:,i))+1;
+    set(gca,'XTick',0:8:L);
+    axis([1 L ymin ymax]); grid on;
+    subplot(4,1,3);
+    plot(yy1(:,i));
+    title('Matched Filter (Averaging Filter) output');
+    xlabel('Sample index [n]');
+    ylabel('Amplitude');
+    set(gca,'XTick',0:8:L);
+    ymax=max(yy1(:,i))+1;
+    ymin=min(yy1(:,i))+1;
+    axis([1 L ymin ymax]); grid on;
+    subplot(4,1,4);
+    plot(yy2(:,i));
+    title('Matched Filter (Rational IR) output');
+    xlabel('Sample index [n]');
+    ylabel('Amplitude');
+    set(gca,'XTick',0:8:L);
+    ymax=max(yy2(:,i))+1;
+    ymin=min(yy2(:,i))+1;
+    axis([1 L ymin ymax]); grid on;
+    pause(1);
+end
+figure
+plot(SNR_dB,PD1,'-ro',...
+    'LineWidth',2,'MarkerEdgeColor','k',...
+    'MarkerFaceColor','g','MarkerSize',5);
+hold on
+plot(SNR_dB,PD2,'-bo',...
+    'LineWidth',2,'MarkerEdgeColor','y',...
+    'MarkerFaceColor','g','MarkerSize',5);
+legend('Averaging Filter','Rational IR Filter')
+ylabel('Probability of Detection P_D');
+xlabel('SNR_d_B');
+title('Probability of Detection');
+grid on;
+figure
+plot(SNR_dB,PDtheory,'-go',...
+    'LineWidth',2,'MarkerEdgeColor','k',...
+    'MarkerFaceColor','g','MarkerSize',5);
+ylabel('Probability of Detection P_D');
+xlabel('SNR_d_B');
+title('Theoritical P_D');
+grid on;
+% Paramètres de simulation
+clear all; clc;
+n = 10;         % Nombre de symboles de données
+Tsym = 8;       % Temps d'un symbole en termes de temps d'échantillonnage ou de taux de suréchantillonnage
+SNRstep = 5;    % Pas de variation du SNR
+SNR_dB = -20:SNRstep:20;
+
+% Initialisation du générateur aléatoire
+rng('default');
+
+% Génération des données BPSK
+BinData = round(rand(1, n));
+data = 2 * BinData - 1;  % Conversion Unipolaire à Bipolaire (BPSK)
+bpsk = reshape(repmat(data, 1, Tsym)', n * Tsym, 1);  % Signal BPSK
+L = length(bpsk);
+
+% Initialisation des compteurs de probabilité de détection et de fausse alarme
+PDc1 = 0;
+PDc2 = 0;
+PFc1 = 0;
+PFc2 = 0;
+PFc = 0;
+PFs = 0.1;
+
+% Initialisation des vecteurs pour les résultats
+PD1 = zeros(1, length(SNR_dB));
+PD2 = zeros(1, length(SNR_dB));
+PF1 = zeros(1, length(SNR_dB));
+PF2 = zeros(1, length(SNR_dB));
+PFinv = zeros(1, length(SNR_dB));
+PF = zeros(1, length(SNR_dB));
+TheoryThreshold = zeros(1, length(SNR_dB));
+PFstatic = zeros(1, length(SNR_dB));
+StaticThreshold = zeros(1, length(SNR_dB));
+PDtheory = zeros(1, length(SNR_dB));
+PMdy = zeros(1, length(SNR_dB));
+PDstatictheory = zeros(1, length(SNR_dB));
+PMstatic = zeros(1, length(SNR_dB));
+
+% Boucle sur différents niveaux de SNR
+for i = 1:length(SNR_dB)
+    
+    % Conversion du SNR en échelle linéaire
+    SNR = 10^(SNR_dB(i)/10);
+    
+    % Calcul de l'énergie du symbole réel
+    Esym = sum(abs(bpsk).^2) / L;
+    
+    % Calcul de la densité spectrale de bruit
+    N0 = Esym / SNR;
+    
+    % Écart-type du bruit pour un bruit blanc gaussien
+    noiseSigma = sqrt(N0);
+    
+    % Génération du bruit gaussien
+    noise(:, i) = noiseSigma * randn(1, L);
+    
+    % Signal reçu (signal BPSK + bruit)
+    receivedx(:, i) = bpsk + noise(:, i);
+    
+    % Filtrage par le filtre de correspondance (filtre moyenneur)
+    impRes = [0.5 ones(1, 6) 0.5];
+    yy1(:, i) = conv(receivedx(:, i), impRes, 'full');
+    
+    % Opération de seuillage avec un filtre réciproque
+    xp(:, i) = flipud(receivedx(:, i));
+    thresh(:, i) = noise(:, i) .* xp(:, i);
+    yy2(:, i) = filter(xp(:, i), 1, receivedx(:, i));
+    
+    % Calcul des probabilités de détection et de fausse alarme
+    for j = 1:L
+        if (yy1(j, i) > thresh(j, i))
+            PDc1 = PDc1 + 1;
+        end
+        if (yy2(j, i) > thresh(j, i))
+            PDc2 = PDc2 + 1;
+        end
+        if (noise(j, i) > thresh(j, i))
+            PFc = PFc + 1;
+        end
+        if (yy1(j, i) < thresh(j, i))
+            PFc1 = PFc1 + 1;
+        end
+        if (yy2(j, i) < thresh(j, i))
+            PFc2 = PFc2 + 1;
+        end
+    end
+    
+    % Calcul des probabilités de détection et de fausse alarme normalisées
+    PD1(:, i) = PDc1 / (L * n);
+    PD2(:, i) = PDc2 / (L * n);
+    PF1(:, i) = PFc1 / (L * n);
+    PF2(:, i) = PFc2 / (L * n);
+    PFinv(:, i) = (PFc / (L * n));
+    PF(:, i) = 1 - PFinv(:, i);
+    
+    % Calcul des seuils théoriques et des probabilités théoriques
+    TheoryThreshold(i) = qfuncinv(PFinv(:, i)) * sqrt(SNR * noiseSigma^2);
+    PFstatic(i) = PFs;
+    StaticThreshold(i) = qfuncinv(PFs) * sqrt(SNR * noiseSigma^2);
+    
+    PDtheory(i) = qfunc((TheoryThreshold(i) - SNR) / sqrt(SNR * noiseSigma^2));
+    PMdy(i) = 1 - PDtheory(i);
+    PDstatictheory(i) = qfunc((StaticThreshold(i) - SNR) / sqrt(SNR * noiseSigma^2));
+    PMstatic(i) = 1 - PDstatictheory(i);
+    
+    % Affichage des graphiques à chaque itération
+    figure('Color', [1 1 1]);
+    subplot(4,1,1); plot(bpsk); titleX = sprintf('Simulation avec %d dB', SNR_dB(i)); title(titleX); xlabel('Index d''échantillon [n]'); ylabel('Amplitude'); set(gca,'XTick',0:8:L); axis([1 L -2 2]); grid on;
+    subplot(4,1,2); plot(receivedx(:, i)); title('Symboles BPSK transmis (avec bruit)'); xlabel('Index d''échantillon [n]'); ylabel('Amplitude'); ymax = max(receivedx(:, i)) + 1; ymin = min(receivedx(:, i)) + 1; set(gca,'XTick',0:8:L); axis([1 L ymin ymax]); grid on;
+    subplot(4,1,3); plot(yy1(:, i)); title('Sortie du filtre adapté (Filtre de moyenne)'); xlabel('Index d''échantillon [n]'); ylabel('Amplitude'); set(gca,'XTick',0:8:L); ymax = max(yy1(:, i)) + 1; ymin = min(yy1(:, i)) + 1; axis([1 L ymin ymax]); grid on;
+    subplot(4,1,4); plot(yy2(:, i)); title('Sortie du filtre adapté (IR Rationnel)'); xlabel('Index d''échantillon [n]'); ylabel('Amplitude'); set(gca,'XTick',0:8:L); ymax = max(yy2(:, i)) + 1; ymin = min(yy2(:, i)) + 1; axis([1 L ymin ymax]); grid on;
+    pause(1);
+end
+
+% Graphiques globaux
+figure;
+plot(SNR_dB, PD1, '-ro', 'LineWidth', 2, 'MarkerEdgeColor', 'k', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+hold on;
+plot(SNR_dB, PD2, '-bo', 'LineWidth', 2, 'MarkerEdgeColor', 'y', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+legend('Filtre de moyenne', 'Filtre IR Rationnel');
+ylabel('Probabilité de Détection P_D');
+xlabel('SNR_d_B');
+title('Probabilité de Détection');
+grid on;
+
+figure;
+plot(SNR_dB, PDtheory, '-go', 'LineWidth', 2, 'MarkerEdgeColor', 'k', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+ylabel('Probabilité de Détection P_D');
+xlabel('SNR_d_B');
+title('Probabilité de Détection Théorique');
+grid on;
+
+figure;
+plot(SNR_dB, PF, '-mo', 'LineWidth', 2, 'MarkerEdgeColor', 'g', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+ylabel('Probabilité de Fausse Alarme P_F_A');
+xlabel('SNR_d_B');
+title('Probabilité de Fausse Alarme');
+grid on;
+
+PM1 = 1 - PD1;
+PM2 = 1 - PD2;
+figure;
+plot(SNR_dB, PM1, '-ro', 'LineWidth', 2, 'MarkerEdgeColor', 'k', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+hold on;
+TheoryThreshold = TheoryThreshold(end:-1:1);
+plot(SNR_dB, PM2, '-bo', 'LineWidth', 2, 'MarkerEdgeColor', 'y', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+legend('Filtre de moyenne', 'Filtre IR Rationnel');
+ylabel('Probabilité de Miss Détection P_M');
+xlabel('SNR_d_B');
+title('Probabilité de Miss Détection');
+grid on;
+
+TER1 = PM1 + PF;
+TER2 = PM2 + PF;
+figure;
+plot(SNR_dB, TER1, '-bo', 'LineWidth', 2, 'MarkerEdgeColor', 'k', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+hold on;
+plot(SNR_dB, TER2, '-go', 'LineWidth', 2, 'MarkerEdgeColor', 'y', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+legend('Filtre de moyenne', 'Filtre IR Rationnel');
+ylabel('Taux d'Erreur Total (TER)');
+xlabel('SNR_d_B');
+title('Taux d'Erreur Total');
+grid on;
+
+figure;
+plot(SNR_dB, PFAtheory, '-yo', 'LineWidth', 2, 'MarkerEdgeColor', 'r', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+ylabel('Probabilité de Fausse Alarme P_F_A');
+xlabel('SNR_d_B');
+title('Probabilité de Fausse Alarme Théorique');
+grid on;
+
+figure;
+plot(thresh(:, 1), 'LineWidth', 1.5);
+hold on;
+plot(thresh(:, 2), 'LineWidth', 1.5);
+plot(thresh(:, 3), 'LineWidth', 1.5);
+plot(thresh(:, 4), 'LineWidth', 1.5);
+plot(thresh(:, 5), 'LineWidth', 1.5);
+plot(thresh(:, 6), 'LineWidth', 1.5);
+plot(thresh(:, 7), 'LineWidth', 1.5);
+plot(thresh(:, 8), 'LineWidth', 1.5);
+plot(thresh(:, 9), 'LineWidth', 1.5);
+legend('-20 dB', '-15 dB', '-10 dB', '-5 dB', '0 dB', '5 dB', '10 dB', '15 dB', '20 dB');
+xlabel('Indice Temporel');
+ylabel('Énergie');
+title('Seuils Dynamiques Simulés');
+
+figure;
+plot(SNR_dB, StaticThreshold, '-m*', 'LineWidth', 2, 'MarkerEdgeColor', 'b', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+hold on;
+plot(SNR_dB, TheoryThreshold, '-yo', 'LineWidth', 2, 'MarkerEdgeColor', 'k', 'MarkerFaceColor', 'g', 'MarkerSize', 5);
+legend('Seuil Statique', 'Seuil Dynamique');
+ylabel('Seuil');
+xlabel('SNR_d_B');
+title('Seuil');
+grid on;
+
+figure;
+plot(SNR_dB, PDstatictheory, 'LineWidth', 1.5);
+hold on;
+plot(SNR_dB, PDtheory, 'LineWidth', 1.5);
+legend('Statique', 'Dynamique');
+ylabel('P_D');
+xlabel('SNR_d_B');
+title('P_D Statique vs Dynamique');
+
+figure;
+plot(SNR_dB, PFstatic, 'LineWidth', 1.5);
+hold on;
+plot(SNR_dB, PF, 'LineWidth', 1.5);
+legend('Statique', 'Dynamique');
+ylabel('P_F_A');
+xlabel('SNR_d_B');
+title('P_F_A Statique vs Dynamique');
+
+figure;
+plot(SNR_dB, PMstatic, 'LineWidth', 1.5);
+hold on;
+plot(SNR_dB, PMdy, 'LineWidth', 1.5);
+legend('Statique', 'Dynamique');
+ylabel('P_M');
+xlabel('SNR_d_B');
+title('P_M Statique vs Dynamique');
